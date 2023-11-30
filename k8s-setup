@@ -1,0 +1,302 @@
+Kubernetes installation on the RHEL versions 
+
+##############################################################
+
+On All VM’s 
+
+1 ) Disable swap 
+
+vim /etc/fstab   ( comment the swap partition ) 
+
+2 )  Disable selinux 
+
+vim /etc/selinux/config 
+   Set enforcing to disable and save the file
+
+3 )  Set hostname 
+
+Vim /etc/hosts
+
+192.168.0.1   master 
+192.168.0.12  worker-2 
+192.168.0.13  worker-1
+
+##############################################################
+
+
+###### Configure firewal on master node ######
+
+firewall-cmd --permanent --add-port={6443,2379,2380,10250,10251,10252,10257,10259,179}/tcp
+
+firewall-cmd --permanent --add-port=4789/udp
+
+firewall-cmd --reload
+
+firewall-cmd --list-all
+
+
+################################￼ set host name in master only ######################
+
+
+Vim /etc/hosts
+
+192.168.0.1   master 
+192.168.0.12  worker-2 
+192.168.0.13  worker-1
+
+
+############################### done with setting host name ##################
+
+
+###### Install container runtime containerd on all the nodes ######
+yum install -y yum-utils
+
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+dnf install containerd.io -y
+
+###### Configure containerd ######
+
+mv /etc/containerd/config.toml /etc/containerd/config.toml.bkp
+
+containerd config default ＞ /etc/containerd/config.toml 
+
+( if above command dose not works then, copy and content output from the containerd config default and paste in /etc/containerd/config.toml  )
+
+vim /etc/containerd/config.toml
+
+SystemdCgroup = true
+
+
+sudo systemctl status containerd
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+
+###### Configure kubernetes repo on all the nodes ######
+
+vim  /etc/yum.repos.d/kubernetes.repo
+
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+
+OR 
+
+cat  <<EOF  | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+
+###### Install kubernetes tools on all the nodes ######
+
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+###### Enable kublet service on all the nodes ######
+
+systemctl status kubelet
+
+systemctl enable kubelet
+
+systemctl start kubelet
+
+
+########################￼ 
+
+
+ kubeadm init  - -control-plane-endpoint=redhat-master   ( enter here master hostname  ) 
+
+
+########################￼
+
+###### Create user kube & kubernetes configuration ######
+
+useradd -G wheel redhat    ( redhat is user and name and giving password to it ) 
+
+passwd redhat
+
+And now exit as root and login as redhat user
+
+And now run below commands on the user redhat
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Now run below command to check on the same 
+
+kubectl  get no
+
+
+###### Install Calico ######
+
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.3/manifests/calico.yaml
+
+
+###### Label worker nodes ######
+kubectl label node worker01 node-role.kubernetes.io/worker=worker
+
+
+
+WORKER NODES STEPS 
+
+
+###### Configure firewal on worker node ######
+
+firewall-cmd --permanent --add-port={179,10250,30000-32767}/tcp
+
+firewall-cmd --permanent --add-port=4789/udp
+
+firewall-cmd --reload
+
+firewall-cmd --list-all
+
+###### Add the overlay and br_netfilter kernel modules on all the nodes ######
+vim /etc/modules-load.d/k8s.conf
+
+overlay
+br_netfilter
+
+###### Add the following kernel parameters on all the nodes ######
+vim /etc/sysctl.d/k8s.conf
+
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+
+sysctl --system
+
+
+######￼ 
+
+yum install -y yum-utils
+
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+dnf install containerd.io -y
+
+
+###### Configure containerd ######
+
+mv /etc/containerd/config.toml /etc/containerd/config.toml.bkp
+
+containerd config default ＞ /etc/containerd/config.toml 
+
+( if above command dose not works then, copy and content output from the containerd config default and paste in /etc/containerd/config.toml  )
+
+vim /etc/containerd/config.toml
+
+SystemdCgroup = true
+
+
+sudo systemctl status containerd
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+sudo systemctl status containerd
+
+
+###### Configure kubernetes repo on all the nodes ######
+
+vim  /etc/yum.repos.d/kubernetes.repo
+
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+
+OR 
+
+cat  <<EOF  | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+
+###### Install kubernetes tools on all the nodes ######
+
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+###### Enable kublet service on all the nodes ######
+
+systemctl status kubelet
+
+systemctl enable kubelet
+
+systemctl start kubelet
+
+systemctl status kubelet
+
+
+########################￼
+
+Now setup host name on all nodes like below and  restart
+
+vim /etc/hosts
+
+192.168.0.1   master 
+192.168.0.12  worker-2 
+192.168.0.13  worker-1
+
+reboot ( on all the VMs ) 
+
+################################################################￼ 
+
+Now lets verify containerd, kubelet, systems service is running on masts and workers by below commands
+
+systemctl status kubelet
+
+sudo systemctl status containerd
+
+################################################################￼
+
+Now join the worker nodes to master by kubeadm init output like below 
+
+kubeadm join redhat-master:6443 --token frdsd7.o9xftv5t8fepdpa3 \
+        --discovery-token-ca-cert-hash sha256:f2b3f9146ec8dd2e0876acee2f01c9ff440c24b127b5a655783aae4ea4873295
+
+& 
+
+Now go on master  and verify the same by below command
+
+kubectl get nodes 
+
+################################################################￼
+
+Now install the network plugin mentioned below for this setup 
+
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.3/manifests/calico.yaml
+
+verify the same
+
+kubectl get pods —all-namespaces
+
+kubectl get nodes
+
+
+
+To identify  easily	label the worker nodes
+
+kubectl  label node redhat-worker-1 node-role.kubernetes.io/worker=worker1
+
+
+kubectl create deployment web-app01  - -image nginx  - -replicas=2 
+
+kubectl expose deployment  web-app01 - -type NodePort   - -port 80 
+ 
